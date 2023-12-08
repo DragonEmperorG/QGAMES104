@@ -268,22 +268,23 @@ highp vec4 cube_2d_sample_texture_x_y_z = mix(
     \end{figure}   
     
     \section{提高：后期处理}
-    \verb|vulkan_passes.h|文件中定义后期处理效果泛光类
+    \subsection{代码实现}
+    \subsubsection{vulkan\_passes.h}
+    在该文件中定义后期处理效果泛光类
     \begin{minted}{c++}
 class PBloomPass : public PRenderPassBase
 {
 public:
     void initialize(VkRenderPass render_pass, VkImageView input_attachment);
     void draw();
-
     void updateAfterFramebufferRecreate(VkImageView input_attachment);
-
 private:
     void setupDescriptorSetLayout();
     void setupPipelines();
     void setupDescriptorSet();
 };
     \end{minted}
+    
     在枚举中添加泛光特效索引\verb|_main_camera_subpass_bloom|，\verb|_main_camera_subpass_count|枚举值为当前后期处理特效个数，
     \begin{minted}{c++}
 enum
@@ -298,9 +299,22 @@ enum
     _main_camera_subpass_combine_ui,
     _main_camera_subpass_count
 };
+    \end{minted}    
+    \subsubsection{vulkan\_manager.h}
+    在该文件\verb|PVulkanManager|类的\verb|private|中定义后期处理效果泛光类成员变量
+    \begin{minted}{c++}
+PBloomPass m_bloom_pass;
     \end{minted}
-    
-    \verb|main_camera.cpp|文件\verb|PMainCameraPass::setupRenderPass()|函数中添加新的\verb|VkSubpassDescription|对象和\verb|VkSubpassDependency|对象
+    \subsubsection{render\_passes.cpp}
+    在该文件\verb|Pilot::PVulkanManager::initializeRenderPass()|函数中调用\verb|m_bloom_pass|的\verb|initialize|方法，这里需要注意第二个参数的填写，以及根据新插入Pass的位置调整已存在的Pass初始化参数
+    \begin{minted}{c++}
+m_bloom_pass.initialize(
+    m_main_camera_pass.getRenderPass(),
+    m_main_camera_pass.getFramebufferImageViews()[_main_camera_pass_backup_buffer_odd]
+);
+    \end{minted}
+    \subsubsection{main\_camera.cpp}
+    在该文件\verb|PMainCameraPass::setupRenderPass()|函数中添加新的\verb|VkSubpassDescription|对象和\verb|VkSubpassDependency|对象
     \begin{minted}{c++}
 VkAttachmentReference bloom_pass_input_attachment_reference {};
 bloom_pass_input_attachment_reference.attachment = 
@@ -343,7 +357,21 @@ bloom_pass_depend_on_deferred_lighting_pass.srcAccessMask =
 bloom_pass_depend_on_deferred_lighting_pass.dstAccessMask =
     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 bloom_pass_depend_on_deferred_lighting_pass.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    \end{minted} 
-    
+    \end{minted}
+    \verb|PMainCameraPass::draw()|函数中调用\verb|m_bloom_pass|的\verb|draw|方法，这里需要增加函数的输入参数
+    \begin{minted}{c++}
+bloom_pass.draw();
+m_p_vulkan_context->_vkCmdNextSubpass(
+    m_command_info._current_command_buffer, 
+    VK_SUBPASS_CONTENTS_INLINE
+);
+    \end{minted}
+    \subsubsection{swapchain.cpp}
+    在该文件\verb|recreateSwapChain()|函数中调用\verb|m_bloom_pass|的\verb|updateAfterFramebufferRecreate|方法，这里同样需要注意第二个参数的填写，以及根据新插入Pass的位置调整已存在的Pass初始化参数
+    \begin{minted}{c++}
+m_bloom_pass.updateAfterFramebufferRecreate(
+    m_main_camera_pass.getFramebufferImageViews()[_main_camera_pass_backup_buffer_odd]
+);
+    \end{minted}
     
 \end{document}
